@@ -1,0 +1,236 @@
+---
+title: "PHJV Status of Bird Populations: Waterbirds, shorebirds, and landbirds"
+date: "`r Sys.Date()`"
+format: 
+  docx: 
+    reference-doc: custom-reference-doc.docx
+  html: default
+execute: 
+  echo: false
+  warning: false
+  message: false
+  cache: false
+mainfont: "Times New Roman"
+filters: 
+  - flextable-qmd
+  - at: post-render
+    path: _extensions/flextable-qmd/unwrap-float.lua
+    
+---
+
+```{r, setup, cache=F, include=F}
+
+knitr::opts_knit$set(root.dir = "C:/Users/user/OneDrive - birdscanada.org/Documents/PHJV_status_of_bird_pops")
+
+library(tidyverse)
+library(ggthemes)
+library(knitr)
+library(flextable)
+library(officer)
+
+# global flextable options
+use_flextable_qmd()
+set_flextable_defaults(
+  theme_fun = function(x) {
+    x = theme_booktabs(x)
+    x = bold(x, part = "header")
+  #  #x = set_caption(x, align_with_table = F)
+  #  x = autofit(x, part = "all")
+  #  x
+  },     
+  table.layout = "autofit",
+  table_align = "left",
+  font.family = "Times New Roman",
+  hansi.family = "Times New Roman",
+  font.size = 12
+  )
+
+# helper functions
+# Define a function to fix the bbox to be in EPSG:3857
+ggmap_bbox <- function(map) {
+  if (!inherits(map, "ggmap")) stop("map must be a ggmap object")
+  # Extract the bounding box (in lat/lon) from the ggmap to a numeric vector, 
+  # and set the names to what sf::st_bbox expects:
+  map_bbox <- setNames(unlist(attr(map, "bb")), 
+                       c("ymin", "xmin", "ymax", "xmax"))
+  
+  # Coonvert the bbox to an sf polygon, transform it to 3857, 
+  # and convert back to a bbox (convoluted, but it works)
+  bbox_3857 <- st_bbox(st_transform(st_as_sfc(st_bbox(map_bbox, crs = 4326)), 3857))
+  
+  # Overwrite the bbox of the ggmap object with the transformed coordinates 
+  attr(map, "bb")$ll.lat <- bbox_3857["ymin"]
+  attr(map, "bb")$ll.lon <- bbox_3857["xmin"]
+  attr(map, "bb")$ur.lat <- bbox_3857["ymax"]
+  attr(map, "bb")$ur.lon <- bbox_3857["xmax"]
+  map
+}
+
+# plots
+set.seed(723451)
+P29 = Polychrome::createPalette(29,  c("#ff0000", "#00ff00", "#0000ff"))
+Polychrome::swatch(P29)
+names(P29) = NULL
+
+# list of species
+sp_list = data.frame(species = c("Pied-billed Grebe", "Horned Grebe", "Eared Grebe", "Western Grebe", "Yellow Rail", "Virginia Rail", "Sora", "American Coot", "American Avocet", "Piping Plover", "Wilson's Snipe", "Spotted Sandpiper", "Wilson's Phalarope", "Franklin's Gull", "Black Tern", "Forster's Tern", "Least Bittern", "Sedge Wren", "Marsh Wren", "LeConte's Sparrow", "Nelson's Sparrow", "Common Yellowthroat", "Black-billed Cuckoo", "Killdeer", "Long-billed Curlew", "Marbled Godwit", "Willet", "Northern Harrier", "Greater Sage-Grouse", "Sharp-tailed Grouse", "Common Nighthawk", "Upland Sandpiper", "Swainson's Hawk", "Ferruginous Hawk", "Burrowing Owl", "Short-eared Owl", "Northern Flicker", "Prairie Falcon", "Loggerhead Shrike", "Black-billed Magpie", "Horned Lark", "Brown Thrasher", "Sprague's Pipit", "Chestnut-collared Longspur", "Thick-billed Longspur", "Clay-colored Sparrow", "Lark Bunting", "Grasshopper Sparrow", "Baird's Sparrow", "Bobolink", "Western Meadowlark", "Whooping Crane", "Black-bellied Plover", "American Golden-Plover", "Hudsonian Godwit", "Ruddy Turnstone", "Red Knot", "Stilt Sandpiper", "Sanderling", "Buff-breasted Sandpiper", "Semipalmated Sandpiper", "Short-billed Dowitcher", "Long-billed Dowitcher", "Red-necked Phalarope"),
+                     type = c("W", "W", "W", "W", "W", "W", "W", "W", "S", "S", "S", "S", "S", "W", "W", "W", "W", "L", "L", "L", "L", "L", "L", "S", "S", "S", "S", "L", "L", "L", "L", "S", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "L", "W", "S", "S", "S", "S", "S", "S", "S", "S", "S", "S", "S", "S"))
+
+
+```
+
+```{r, include=FALSE}
+#| label: bbs_import
+#| cache: TRUE
+
+trend = read_csv("data/bbs/2024/All_Toutes_Tendance_BBS_Trends_2024.csv")
+ind = read_csv("data/bbs/2024/All_Toutes_BBS_Full_Indices_Complets_2024.csv")
+ind_smooth = read_csv("data/bbs/2024/All_Toutes_BBS_Smoothed_Indices_Lisses_2024.csv")
+
+trend = trend %>%
+  filter(region_en == "Canada-Prairie Potholes",
+         trend_period_en != "Three-generation") %>%
+  mutate(species = if_else(species == "Northern Flicker (all forms)", "Northern Flicker", species)) %>%
+  right_join(sp_list) %>%
+  select(species, type, trend_period_en, trend_tendence, trend_tendence_q_0.025, trend_tendence_q_0.975) #
+
+ind = ind %>%
+  filter(region_en == "Canada-Prairie Potholes",
+         trend_period_en == "Long-term") %>%
+  mutate(species = if_else(species == "Northern Flicker (all forms)", "Northern Flicker", species)) %>%
+  right_join(sp_list) %>%
+  select(species, type, year_an, trend_period_en, ind, ind_q_0.025, ind_q_0.975) %>%
+  group_by(species) %>%
+  mutate(ind_q_0.025 = ind_q_0.025 / max(ind) * 100,
+         ind_q_0.975 = ind_q_0.975 / max(ind) * 100,
+         ind = ind / max(ind) * 100)
+
+ind = ind_smooth %>%
+  filter(region_en == "Canada-Prairie Potholes",
+         trend_period_en == "Long-term") %>%
+  mutate(species = if_else(species == "Northern Flicker (all forms)", "Northern Flicker", species)) %>%
+  right_join(sp_list) %>%
+  select(species, type, year_an, trend_period_en, ind, ind_q_0.025, ind_q_0.975) %>%
+    group_by(species) %>%
+  mutate(ind_q_0.025 = ind_q_0.025 / max(ind) * 100,
+         ind_q_0.975 = ind_q_0.975 / max(ind) * 100,
+         ind = ind / max(ind) * 100)
+
+
+```
+
+```{r}
+#| label: fig-indices1
+#| fig.cap: "Smoothed annual breeding bird indices from the North American Breeding Bird Survey for selected waterbird species. Each index has been scaled so that the maximum for each species is 100."
+#| echo: FALSE
+#| out-width: "120%"
+#| fig-width: 6
+#| fig-height: 3.5
+
+
+ggplot(ind %>% filter(type == "W", !is.na(ind)), aes(x = year_an, y = ind, #ymin = ind_q_0.025, ymax = ind_q_0.975, 
+                                                                  colour = str_wrap(species, 10))) + 
+  theme_tufte() +
+  geom_line(size = 1) +
+  #geom_ribbon(alpha = 0.2, colour = NA) +
+  scale_color_manual(values = P29) +
+  ylab("Annual Index") +
+  theme(legend.title = element_blank(),
+        axis.title.x = element_blank()) 
+
+
+```
+
+```{r}
+#| label: fig-indices2
+#| fig.cap: "Smoothed annual breeding bird indices from the North American Breeding Bird Survey for selected shorebird species. Each index has been scaled so that the maximum for each species is 100."
+#| echo: FALSE
+#| out-width: "120%"
+#| fig-width: 6
+#| fig-height: 3.5
+
+
+ggplot(ind %>% filter(type == "S", !is.na(ind)), aes(x = year_an, y = ind, #ymin = ind_q_0.025, ymax = ind_q_0.975, 
+                                                                  colour = str_wrap(species, 10))) + 
+  theme_tufte() +
+  geom_line(size = 1) +
+  #geom_ribbon(alpha = 0.2, colour = NA) +
+  scale_color_manual(values = P29) +
+  ylab("Annual Index") +
+  theme(legend.title = element_blank(),
+        axis.title.x = element_blank())
+
+
+```
+
+```{r}
+#| label: fig-indices3
+#| fig.cap: "Smoothed annual breeding bird indices from the North American Breeding Bird Survey for selected upland-associated landbird species. Each index has been scaled so that the maximum for each species is 100."
+#| echo: FALSE
+#| out-width: "120%"
+#| fig-width: 6
+#| fig-height: 5
+
+
+ggplot(ind %>% filter(type == "L", !is.na(ind), !species %in% c("LeConte's Sparrow", "Sedge Wren", "Common Yellowthroat", "Marsh Wren", "Nelson's Sparrow")), aes(x = year_an, y = ind, #ymin = ind_q_0.025, ymax = ind_q_0.975, 
+                                                                 colour = str_wrap(species, 10))) + 
+  theme_tufte() +
+  geom_line(size = 1) +
+  #geom_ribbon(alpha = 0.2, colour = NA) +
+  scale_color_manual(values = P29) +
+  ylab("Annual Index") +
+  theme(legend.title = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "bottom") +
+  guides(color = guide_legend(nrow = 5))
+
+
+```
+
+```{r}
+#| label: fig-indices4
+#| fig.cap: "Smoothed annual breeding bird indices from the North American Breeding Bird Survey for selected wetland-associated landbird species. Each index has been scaled so that the maximum for each species is 100."
+#| echo: FALSE
+#| out-width: "120%"
+#| fig-width: 5
+#| fig-height: 3.5
+
+
+ggplot(ind %>% filter(type == "L", !is.na(ind), species %in% c("LeConte's Sparrow", "Sedge Wren", "Common Yellowthroat", "Marsh Wren", "Nelson's Sparrow")), aes(x = year_an, y = ind, #ymin = ind_q_0.025, ymax = ind_q_0.975, 
+                                                                 colour = str_wrap(species, 10))) + 
+  theme_tufte() +
+  geom_line(size = 1) +
+  #geom_ribbon(alpha = 0.2, colour = NA) +
+  scale_color_manual(values = P29) +
+  ylab("Annual Index") +
+  theme(legend.title = element_blank(),
+        axis.title.x = element_blank())
+
+
+```
+
+```{r}
+#| label: tbl-trend
+#| tbl-cap: "Trends in breeding bird abundance indices from the North American Breeding Bird Survey for selected waterbird (W), shorebird (S), and landbird (L) species. Short-term trend estimates are from 2014-2024, while long-term estimates are from 1970-2024"
+#| echo: FALSE
+
+trend %>%
+  mutate(across(4:6, ~round(.x, digits = 2))) %>%
+  mutate(trend = paste0(trend_tendence, " (", trend_tendence_q_0.025, ", ", trend_tendence_q_0.975, " )")) %>%
+  select(species, type, trend_period_en, trend) %>%
+  pivot_wider(names_from = trend_period_en, values_from = trend, names_prefix = "Trend: ", names_sep = "") %>%
+  select(species, type, `Trend: Short-term`, `Trend: Long-term`) %>%
+  rename(Species = species, Group = type) %>%
+  mutate(Species = str_wrap(Species, 10)) %>%
+  arrange(Species) %>%
+  arrange(Group) %>%
+  flextable() %>%
+  #fontsize(size = 10) %>%
+  autofit(part = "body") %>%
+  set_caption(word_stylename = "Table Caption")
+
+
+
+
+```
+
