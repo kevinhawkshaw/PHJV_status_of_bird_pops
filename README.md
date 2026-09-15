@@ -1,0 +1,1 @@
+This repository compiles trend data from the North American Breeding Bird Survey into figures and tables for the purpose of supporting Prairie Habitat Joint Venture Implementation Plan development. To run the script, you will need the most recent BBS trend and smoothed annual index data, and may need to change file extensions.
